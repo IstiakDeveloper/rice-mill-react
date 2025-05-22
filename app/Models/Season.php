@@ -49,4 +49,26 @@ class Season extends Model
 
         return $season;
     }
+
+
+
+    public function expenses()
+    {
+        return $this->hasMany(Expense::class);
+    }
+
+    public function fundInputs()
+    {
+        return $this->hasMany(FundInput::class);
+    }
+
+    public function additionalIncomes()
+    {
+        return $this->hasMany(AdditionalIncome::class);
+    }
+
+    public function cashBalance()
+    {
+        return $this->hasOne(CashBalance::class);
+    }
 }
