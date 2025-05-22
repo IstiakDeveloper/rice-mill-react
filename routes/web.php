@@ -1,9 +1,14 @@
 <?php
 
+use App\Http\Controllers\AdditionalIncomeController;
+use App\Http\Controllers\CashReportController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ExpenseCategoryController;
+use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\FundInputController;
 use App\Http\Controllers\SackTypeController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\PaymentController;
@@ -19,12 +24,25 @@ Route::middleware(['auth', 'verified'])->group(function () {
     })->name('dashboard');
 });
 
+Route::resource('funds', FundInputController::class);
+Route::resource('expenses', ExpenseController::class);
+Route::resource('additional-incomes', AdditionalIncomeController::class);
+Route::resource('expense-categories', ExpenseCategoryController::class);
+
+
+
+Route::middleware(['auth', 'verified'])->group(function () {
+    // Cash Report Routes
+    Route::get('/reports/cash', [CashReportController::class, 'index'])->name('cash-report.index');
+    Route::get('/reports/cash/export', [CashReportController::class, 'exportExcel'])->name('cash-report.export');
+    Route::get('/reports/cash/opening-balance', [CashReportController::class, 'getOpeningBalance'])->name('cash-report.opening-balance');
+});
 
 Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-Route::post('/dashboard/transactions', [DashboardController::class, 'storeTransaction'])->name('dashboard.transactions.store');
+Route::post('/dashboard/transactions', [DashboardController::class, 'storeTransaction'])->name('dashboard.store-transaction');
 Route::post('/dashboard/payments', [DashboardController::class, 'storePayment'])->name('dashboard.payments.store');
-Route::post('/dashboard/customers', [DashboardController::class, 'storeCustomer'])->name('dashboard.customers.store');
-Route::post('/dashboard/sack-types', [DashboardController::class, 'storeSackType'])->name('dashboard.sack-types.store');
+Route::post('/dashboard/customers', [DashboardController::class, 'storeCustomer'])->name('dashboard.store-customer');
+Route::post('/dashboard/sack-types', [DashboardController::class, 'storeSackType'])->name('dashboard.store-sack-type');
 
 // Customers
 Route::resource('customers', CustomerController::class)->except(['show', 'edit']);

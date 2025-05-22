@@ -7,241 +7,704 @@ use App\Models\Season;
 use App\Models\Transaction;
 use App\Models\Payment;
 use App\Models\SackType;
+use App\Models\CashBalance;
+use App\Models\CustomerBalance;
+use App\Models\Expense;
+use App\Models\FundInput;
+use App\Models\AdditionalIncome;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class DashboardController extends Controller
 {
     /**
-     * Display the dashboard.
+     * Display the dashboard with all necessary data.
      */
     public function index()
     {
-        // Get current season
-        $currentSeason = Season::getCurrentSeason();
+        try {
+            // Get current season
+            $currentSeason = Season::getCurrentSeason();
 
-        // Today's transactions and payments
-        $today = Carbon::today();
-        $todayTransactions = Transaction::whereDate('transaction_date', $today)->sum('total_amount');
-        $todayPayments = Payment::whereDate('payment_date', $today)->sum('amount');
+            // Collect dashboard data
+            $dashboardData = $this->collectDashboardData($currentSeason);
 
-        // Season totals
-        $seasonTransactions = Transaction::where('season_id', $currentSeason->id)->sum('total_amount');
-        $seasonPayments = Payment::where('season_id', $currentSeason->id)->sum('amount');
-        $seasonDue = Transaction::where('season_id', $currentSeason->id)->sum('due_amount');
+            return Inertia::render('Dashboard', $dashboardData);
 
-        // Recent transactions
-        $recentTransactions = Transaction::with('customer')
-            ->latest()
-            ->take(5)
-            ->get();
+        } catch (\Exception $e) {
+            Log::error('Dashboard loading failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
 
-        // Recent payments
-        $recentPayments = Payment::with('customer')
-            ->latest()
-            ->take(5)
-            ->get();
-
-        // Customers with due
-        $customersWithDue = Customer::whereHas('transactions', function ($query) {
-            $query->where('due_amount', '>', 0);
-        })
-            ->withSum('transactions as total_due', 'due_amount')
-            ->orderByDesc('total_due')
-            ->take(5)
-            ->get();
-
-        // Get all customers, sack types for modal forms
-        $customers = Customer::all();
-        $sackTypes = SackType::all();
-
-        return Inertia::render('Dashboard', [
-            'currentSeason' => $currentSeason,
-            'todayTransactions' => $todayTransactions,
-            'todayPayments' => $todayPayments,
-            'seasonTransactions' => $seasonTransactions,
-            'seasonPayments' => $seasonPayments,
-            'seasonDue' => $seasonDue,
-            'recentTransactions' => $recentTransactions,
-            'recentPayments' => $recentPayments,
-            'customersWithDue' => $customersWithDue,
-            'customers' => $customers,
-            'sackTypes' => $sackTypes,
-        ]);
+            return redirect()->back()->with('error', 'Unable to load dashboard. Please try again.');
+        }
     }
 
     /**
-     * Store a transaction directly from dashboard.
+     * Create a new transaction with items and handle payments.
      */
     public function storeTransaction(Request $request)
     {
-        $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-            'transaction_date' => 'required|date',
-            'paid_amount' => 'required|numeric|min:0',
-            'notes' => 'nullable|string',
-            'items' => 'required|array|min:1',
-            'items.*.sack_type_id' => 'required|exists:sack_types,id',
-            'items.*.quantity' => 'required|integer|min:1',
-            'items.*.unit_price' => 'required|numeric|min:0',
-        ]);
-
-        // Get current season
-        $season = Season::getCurrentSeason();
-
-        // Calculate totals
-        $totalAmount = 0;
-        foreach ($request->items as $item) {
-            $totalAmount += $item['quantity'] * $item['unit_price'];
-        }
-
-        $paidAmount = $request->paid_amount;
-        $dueAmount = $totalAmount - $paidAmount;
-
-        // Set payment status
-        $paymentStatus = 'due';
-        if ($dueAmount <= 0) {
-            $paymentStatus = 'paid';
-        } elseif ($paidAmount > 0) {
-            $paymentStatus = 'partial';
-        }
-
-        \DB::beginTransaction();
-
         try {
-            // Create transaction
-            $transaction = Transaction::create([
-                'customer_id' => $request->customer_id,
-                'season_id' => $season->id,
-                'transaction_date' => $request->transaction_date,
-                'total_amount' => $totalAmount,
-                'paid_amount' => $paidAmount,
-                'due_amount' => $dueAmount,
-                'payment_status' => $paymentStatus,
-                'notes' => $request->notes,
-            ]);
+            $validated = $this->validateTransactionData($request);
+            $seasonId = $validated['season_id'] ?? Season::getCurrentSeason()->id;
 
-            // Create transaction items
-            foreach ($request->items as $item) {
-                $transaction->items()->create([
-                    'sack_type_id' => $item['sack_type_id'],
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                    'total_price' => $item['quantity'] * $item['unit_price'],
-                ]);
-            }
+            // Calculate transaction totals
+            $totals = $this->calculateTransactionTotals($validated['items'], $validated['paid_amount']);
 
-            // Create payment record if paid amount is greater than 0
-            if ($paidAmount > 0) {
-                Payment::create([
-                    'customer_id' => $request->customer_id,
-                    'transaction_id' => $transaction->id,
-                    'season_id' => $season->id,
-                    'payment_date' => $request->transaction_date,
-                    'amount' => $paidAmount,
-                    'notes' => 'Payment made during transaction',
-                ]);
-            }
+            DB::transaction(function () use ($validated, $seasonId, $totals) {
+                // Create main transaction record
+                $transaction = $this->createTransactionRecord($validated, $seasonId, $totals);
 
-            \DB::commit();
+                // Create transaction items
+                $this->createTransactionItems($transaction, $validated['items']);
 
-            return redirect()->route('dashboard')->with('success', 'লেনদেন সফলভাবে সম্পন্ন হয়েছে');
+                // Update customer balance with sale
+                $this->updateCustomerBalance(
+                    $validated['customer_id'],
+                    $seasonId,
+                    $totals['total'],
+                    0,
+                    $validated['transaction_date']
+                );
+
+                // Handle payment if provided
+                if ($totals['paid'] > 0) {
+                    $this->processTransactionPayment($transaction, $validated, $seasonId, $totals['paid']);
+                }
+            });
+
+            return redirect()->route('dashboard')->with('success', 'Sale transaction created successfully!');
+
+        } catch (ValidationException $e) {
+            return redirect()->back()
+                ->withErrors($e->errors())
+                ->withInput()
+                ->with('error', 'Please check the form data and try again.');
 
         } catch (\Exception $e) {
-            \DB::rollBack();
-            return redirect()->back()->with('error', 'লেনদেন সম্পন্ন করতে ত্রুটি: ' . $e->getMessage());
+            Log::error('Transaction creation failed', [
+                'customer_id' => $request->customer_id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to create transaction. Please try again.');
         }
     }
 
     /**
-     * Store a payment directly from dashboard.
+     * Record a customer payment.
      */
     public function storePayment(Request $request)
     {
-        $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-            'transaction_id' => 'nullable|exists:transactions,id',
-            'payment_date' => 'required|date',
-            'amount' => 'required|numeric|min:0.01',
-            'notes' => 'nullable|string',
-        ]);
-
-        // Get current season
-        $season = Season::getCurrentSeason();
-
-        \DB::beginTransaction();
-
         try {
-            // Create payment
-            $payment = Payment::create([
-                'customer_id' => $request->customer_id,
-                'transaction_id' => $request->transaction_id,
-                'season_id' => $season->id,
-                'payment_date' => $request->payment_date,
-                'amount' => $request->amount,
-                'notes' => $request->notes,
-            ]);
+            $validated = $this->validatePaymentData($request);
+            $seasonId = $validated['season_id'] ?? Season::getCurrentSeason()->id;
 
-            // Update transaction if linked
-            if ($request->transaction_id) {
-                $transaction = Transaction::find($request->transaction_id);
-                $transaction->paid_amount += $request->amount;
-                $transaction->due_amount = $transaction->total_amount - $transaction->paid_amount;
+            DB::transaction(function () use ($validated, $seasonId) {
+                // Create payment record
+                $payment = $this->createPaymentRecord($validated, $seasonId);
 
-                // Update payment status
-                if ($transaction->due_amount <= 0) {
-                    $transaction->payment_status = 'paid';
-                } else {
-                    $transaction->payment_status = 'partial';
+                // Update customer balance
+                $this->updateCustomerBalance(
+                    $validated['customer_id'],
+                    $seasonId,
+                    0,
+                    $validated['amount'],
+                    null,
+                    $validated['payment_date']
+                );
+
+                // Update linked transaction if specified
+                if (!empty($validated['transaction_id'])) {
+                    $this->updateTransactionPaymentStatus($validated['transaction_id'], $validated['amount']);
                 }
 
-                $transaction->save();
-            }
+                // Update cash balance
+                $this->updateCashBalance($seasonId, $validated['amount'], 'add');
+            });
 
-            \DB::commit();
+            return redirect()->route('dashboard')->with('success', 'Payment recorded successfully!');
 
-            return redirect()->route('dashboard')->with('success', 'পেমেন্ট সফলভাবে সম্পন্ন হয়েছে');
+        } catch (ValidationException $e) {
+            return redirect()->back()
+                ->withErrors($e->errors())
+                ->withInput()
+                ->with('error', 'Please check the payment information and try again.');
 
         } catch (\Exception $e) {
-            \DB::rollBack();
-            return redirect()->back()->with('error', 'পেমেন্ট সম্পন্ন করতে ত্রুটি: ' . $e->getMessage());
+            Log::error('Payment recording failed', [
+                'customer_id' => $request->customer_id ?? null,
+                'amount' => $request->amount ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to record payment. Please try again.');
         }
     }
 
     /**
-     * Store a customer directly from dashboard.
+     * Add a new customer.
      */
     public function storeCustomer(Request $request)
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'area' => 'required|string|max:255',
-            'phone_number' => 'required|string|max:20',
-            'image' => 'nullable|image|max:2048',
-        ]);
+        try {
+            // Validate input
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'email' => 'nullable|email',
+                'phone' => 'nullable|string',
+                'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            ]);
 
-        if ($request->hasFile('image')) {
-            $validated['image'] = $request->file('image')->store('customers', 'public');
+            // Handle image upload if provided
+            if ($request->hasFile('image')) {
+                $imagePath = $request->file('image')->store('customers', 'public');
+                $validated['image'] = $imagePath;
+            }
+
+            // Create customer
+            Customer::create($validated);
+
+            // Redirect with success message
+            return redirect()->route('customer.index')->with('success', 'Customer added successfully!');
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Redirect back with validation errors
+            return redirect()->back()->withErrors($e->errors())->withInput();
+
+        } catch (\Exception $e) {
+            // Redirect with error message
+            return redirect()->back()->with('error', 'Something went wrong. Please try again.')->withInput();
         }
-
-        Customer::create($validated);
-
-        return redirect()->route('dashboard')->with('success', 'গ্রাহক সফলভাবে যোগ করা হয়েছে');
     }
 
+
     /**
-     * Store a sack type directly from dashboard.
+     * Add a new product/sack type.
      */
     public function storeSackType(Request $request)
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'price' => 'required|numeric|min:0',
+        try {
+            $validated = $this->validateSackTypeData($request);
+
+            $sackType = SackType::create($validated);
+
+            return redirect()->route('dashboard')->with('success', 'Sack type created successfully!');
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid product data provided.',
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (\Exception $e) {
+            Log::error('Sack type creation failed', [
+                'name' => $request->name ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to add product. Please try again.'
+            ], 500);
+        }
+    }
+
+    /**
+     * Switch the current active season.
+     */
+    public function switchSeason(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'season_id' => 'required|exists:seasons,id'
+            ]);
+
+            session(['current_season_id' => $validated['season_id']]);
+
+            $season = Season::find($validated['season_id']);
+
+            return redirect()->route('dashboard')->with('success', "Successfully switched to season: {$season->name}");
+
+        } catch (ValidationException $e) {
+            return redirect()->back()->with('error', 'Invalid season selected.');
+
+        } catch (\Exception $e) {
+            Log::error('Season switching failed', [
+                'season_id' => $request->season_id ?? null,
+                'error' => $e->getMessage()
+            ]);
+
+            return redirect()->back()->with('error', 'Failed to switch season. Please try again.');
+        }
+    }
+
+    /**
+     * Get customer transactions with balance information.
+     */
+    public function getCustomerTransactions(Customer $customer)
+    {
+        try {
+            $currentSeason = Season::getCurrentSeason();
+
+            $transactions = Transaction::where('customer_id', $customer->id)
+                ->where('season_id', $currentSeason->id)
+                ->with(['season', 'items.sackType'])
+                ->orderBy('transaction_date', 'desc')
+                ->get();
+
+            $payments = Payment::where('customer_id', $customer->id)
+                ->where('season_id', $currentSeason->id)
+                ->orderBy('payment_date', 'desc')
+                ->get();
+
+            $balance = $this->getCustomerBalance($customer, $currentSeason->id);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'transactions' => $transactions,
+                    'payments' => $payments,
+                    'balance' => $balance,
+                    'customer' => $customer,
+                    'season' => $currentSeason
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Customer transactions retrieval failed', [
+                'customer_id' => $customer->id,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load customer transactions.'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get customer balance for specific season.
+     */
+    public function getCustomerBalance(Customer $customer, $seasonId = null)
+    {
+        $seasonId = $seasonId ?? Season::getCurrentSeason()->id;
+
+        $balance = CustomerBalance::where('customer_id', $customer->id)
+            ->where('season_id', $seasonId)
+            ->first();
+
+        if (!$balance) {
+            return [
+                'total_sales' => 0,
+                'total_payments' => 0,
+                'balance' => 0,
+                'advance_payment' => 0,
+                'status' => 'no_transaction',
+                'last_transaction_date' => null,
+                'last_payment_date' => null,
+            ];
+        }
+
+        $status = 'clear';
+        if ($balance->balance > 0) {
+            $status = 'due';
+        } elseif ($balance->advance_payment > 0) {
+            $status = 'advance';
+        }
+
+        return [
+            'total_sales' => $balance->total_sales,
+            'total_payments' => $balance->total_payments,
+            'balance' => $balance->balance,
+            'advance_payment' => $balance->advance_payment,
+            'status' => $status,
+            'last_transaction_date' => $balance->last_transaction_date,
+            'last_payment_date' => $balance->last_payment_date,
+        ];
+    }
+
+    // ============================================================================
+    // PRIVATE HELPER METHODS
+    // ============================================================================
+
+    /**
+     * Collect all dashboard data.
+     */
+    private function collectDashboardData(Season $currentSeason): array
+    {
+        $today = Carbon::today();
+
+        return [
+            // Season information
+            'currentSeason' => $currentSeason,
+            'seasons' => Season::orderBy('created_at', 'desc')->get(),
+
+            // Today's statistics
+            'todayTransactions' => Transaction::whereDate('transaction_date', $today)->sum('total_amount'),
+            'todayPayments' => Payment::whereDate('payment_date', $today)->sum('amount'),
+            'todayExpenses' => Expense::whereDate('expense_date', $today)->sum('amount'),
+
+            // Season totals
+            'seasonTransactions' => Transaction::where('season_id', $currentSeason->id)->sum('total_amount'),
+            'seasonPayments' => Payment::where('season_id', $currentSeason->id)->sum('amount'),
+            'seasonExpenses' => Expense::where('season_id', $currentSeason->id)->sum('amount'),
+            'seasonFundInputs' => FundInput::where('season_id', $currentSeason->id)->sum('amount'),
+            'seasonAdditionalIncomes' => AdditionalIncome::where('season_id', $currentSeason->id)->sum('amount'),
+
+            // Customer balances
+            'totalCustomerDue' => CustomerBalance::where('season_id', $currentSeason->id)
+                ->where('balance', '>', 0)->sum('balance'),
+            'totalCustomerAdvance' => CustomerBalance::where('season_id', $currentSeason->id)
+                ->where('advance_payment', '>', 0)->sum('advance_payment'),
+
+            // Cash balance
+            'currentCashBalance' => optional(CashBalance::where('season_id', $currentSeason->id)->first())->amount ?? 0,
+
+            // Calculated fields
+            'seasonProfit' => $this->calculateSeasonProfit($currentSeason),
+
+            // Recent activities
+            'recentTransactions' => Transaction::with(['customer', 'season'])
+                ->orderBy('transaction_date', 'desc')->take(5)->get(),
+            'recentPayments' => Payment::with(['customer', 'season'])
+                ->orderBy('payment_date', 'desc')->take(5)->get(),
+
+            // Customer lists
+            'customersWithDue' => CustomerBalance::with('customer')
+                ->where('season_id', $currentSeason->id)
+                ->where('balance', '>', 0)
+                ->orderByDesc('balance')->take(10)->get(),
+            'customersWithAdvance' => CustomerBalance::with('customer')
+                ->where('season_id', $currentSeason->id)
+                ->where('advance_payment', '>', 0)
+                ->orderByDesc('advance_payment')->take(5)->get(),
+            'topCustomers' => CustomerBalance::with('customer')
+                ->where('season_id', $currentSeason->id)
+                ->where('total_sales', '>', 0)
+                ->orderByDesc('total_sales')->take(5)->get(),
+
+            // Form data
+            'customers' => Customer::orderBy('name')->get(),
+            'sackTypes' => SackType::orderBy('name')->get(),
+            'monthlyData' => $this->getMonthlyData($currentSeason),
+        ];
+    }
+
+    /**
+     * Calculate season profit/loss.
+     */
+    private function calculateSeasonProfit(Season $season): float
+    {
+        $totalIncome = Transaction::where('season_id', $season->id)->sum('total_amount') +
+            AdditionalIncome::where('season_id', $season->id)->sum('amount');
+        $totalExpenses = Expense::where('season_id', $season->id)->sum('amount');
+        $fundInputs = FundInput::where('season_id', $season->id)->sum('amount');
+
+        return ($totalIncome + $fundInputs) - $totalExpenses;
+    }
+
+    /**
+     * Validate transaction request data.
+     */
+    private function validateTransactionData(Request $request): array
+    {
+        return $request->validate([
+            'customer_id' => 'required|exists:customers,id',
+            'season_id' => 'nullable|exists:seasons,id',
+            'transaction_date' => 'required|date|before_or_equal:today',
+            'paid_amount' => 'required|numeric|min:0',
+            'notes' => 'nullable|string|max:1000',
+            'items' => 'required|array|min:1|max:20',
+            'items.*.sack_type_id' => 'required|exists:sack_types,id',
+            'items.*.quantity' => 'required|integer|min:1|max:10000',
+            'items.*.unit_price' => 'required|numeric|min:0|max:999999.99',
+        ]);
+    }
+
+    /**
+     * Validate payment request data.
+     */
+    private function validatePaymentData(Request $request): array
+    {
+        return $request->validate([
+            'customer_id' => 'required|exists:customers,id',
+            'transaction_id' => 'nullable|exists:transactions,id',
+            'season_id' => 'nullable|exists:seasons,id',
+            'payment_date' => 'required|date|before_or_equal:today',
+            'amount' => 'required|numeric|min:0.01|max:999999.99',
+            'notes' => 'nullable|string|max:1000',
+            'received_by' => 'nullable|string|max:255',
+        ]);
+    }
+
+    /**
+     * Validate customer request data.
+     */
+    private function validateCustomerData(Request $request): array
+    {
+        return $request->validate([
+            'name' => 'required|string|max:255|min:2',
+            'area' => 'required|string|max:255|min:2',
+            'phone_number' => 'required|string|max:20|min:10|unique:customers,phone_number',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+        ]);
+    }
+
+    /**
+     * Validate sack type request data.
+     */
+    private function validateSackTypeData(Request $request): array
+    {
+        return $request->validate([
+            'name' => 'required|string|max:255|min:2|unique:sack_types,name',
+            'price' => 'required|numeric|min:0|max:999999.99',
+        ]);
+    }
+
+    /**
+     * Calculate transaction totals.
+     */
+    private function calculateTransactionTotals(array $items, float $paidAmount): array
+    {
+        $total = 0;
+        foreach ($items as $item) {
+            $total += $item['quantity'] * $item['unit_price'];
+        }
+
+        return [
+            'total' => $total,
+            'paid' => $paidAmount,
+            'due' => max(0, $total - $paidAmount),
+            'status' => $this->determinePaymentStatus($total, $paidAmount)
+        ];
+    }
+
+    /**
+     * Create transaction record.
+     */
+    private function createTransactionRecord(array $validated, int $seasonId, array $totals): Transaction
+    {
+        return Transaction::create([
+            'customer_id' => $validated['customer_id'],
+            'season_id' => $seasonId,
+            'transaction_date' => $validated['transaction_date'],
+            'total_amount' => $totals['total'],
+            'paid_amount' => $totals['paid'],
+            'due_amount' => $totals['due'],
+            'payment_status' => $totals['status'],
+            'notes' => $validated['notes'],
+        ]);
+    }
+
+    /**
+     * Create transaction items.
+     */
+    private function createTransactionItems(Transaction $transaction, array $items): void
+    {
+        foreach ($items as $item) {
+            $transaction->items()->create([
+                'sack_type_id' => $item['sack_type_id'],
+                'quantity' => $item['quantity'],
+                'unit_price' => $item['unit_price'],
+                'total_price' => $item['quantity'] * $item['unit_price'],
+            ]);
+        }
+    }
+
+    /**
+     * Process payment for transaction.
+     */
+    private function processTransactionPayment(Transaction $transaction, array $validated, int $seasonId, float $amount): void
+    {
+        Payment::create([
+            'customer_id' => $validated['customer_id'],
+            'transaction_id' => $transaction->id,
+            'season_id' => $seasonId,
+            'payment_date' => $validated['transaction_date'],
+            'amount' => $amount,
+            'notes' => 'Payment during transaction',
+            'received_by' => auth()->user()->name ?? 'System',
         ]);
 
-        SackType::create($validated);
+        $this->updateCustomerBalance(
+            $validated['customer_id'],
+            $seasonId,
+            0,
+            $amount,
+            null,
+            $validated['transaction_date']
+        );
 
-        return redirect()->route('dashboard')->with('success', 'বস্তার ধরন সফলভাবে যোগ করা হয়েছে');
+        $this->updateCashBalance($seasonId, $amount, 'add');
+    }
+
+    /**
+     * Create payment record.
+     */
+    private function createPaymentRecord(array $validated, int $seasonId): Payment
+    {
+        return Payment::create([
+            'customer_id' => $validated['customer_id'],
+            'transaction_id' => $validated['transaction_id'] ?? null,
+            'season_id' => $seasonId,
+            'payment_date' => $validated['payment_date'],
+            'amount' => $validated['amount'],
+            'notes' => $validated['notes'] ?? null,
+            'received_by' => $validated['received_by'] ?? auth()->user()->name ?? 'Admin',
+        ]);
+    }
+
+    /**
+     * Handle image upload.
+     */
+    private function handleImageUpload($file, string $directory): string
+    {
+        return $file->store($directory, 'public');
+    }
+
+    /**
+     * Update customer balance for both sales and payments.
+     */
+    private function updateCustomerBalance(int $customerId, int $seasonId, float $saleAmount = 0, float $paymentAmount = 0, ?string $transactionDate = null, ?string $paymentDate = null): void
+    {
+        $customerBalance = CustomerBalance::firstOrCreate(
+            ['customer_id' => $customerId, 'season_id' => $seasonId],
+            ['total_sales' => 0, 'total_payments' => 0, 'balance' => 0, 'advance_payment' => 0]
+        );
+
+        // Update sales
+        if ($saleAmount > 0) {
+            $customerBalance->total_sales += $saleAmount;
+            if ($transactionDate) {
+                $customerBalance->last_transaction_date = $transactionDate;
+            }
+        }
+
+        // Update payments
+        if ($paymentAmount > 0) {
+            $customerBalance->total_payments += $paymentAmount;
+            if ($paymentDate) {
+                $customerBalance->last_payment_date = $paymentDate;
+            }
+        }
+
+        // Calculate new balance
+        $newBalance = $customerBalance->total_sales - $customerBalance->total_payments;
+
+        if ($newBalance >= 0) {
+            $customerBalance->balance = $newBalance;
+            $customerBalance->advance_payment = 0;
+        } else {
+            $customerBalance->balance = 0;
+            $customerBalance->advance_payment = abs($newBalance);
+        }
+
+        $customerBalance->save();
+    }
+
+    /**
+     * Update transaction payment status.
+     */
+    private function updateTransactionPaymentStatus(int $transactionId, float $amount): void
+    {
+        $transaction = Transaction::find($transactionId);
+        if (!$transaction) {
+            return;
+        }
+
+        $transaction->paid_amount += $amount;
+        $transaction->due_amount = max(0, $transaction->total_amount - $transaction->paid_amount);
+        $transaction->payment_status = $this->determinePaymentStatus(
+            $transaction->total_amount,
+            $transaction->paid_amount
+        );
+        $transaction->save();
+    }
+
+    /**
+     * Update cash balance.
+     */
+    private function updateCashBalance(int $seasonId, float $amount, string $operation): void
+    {
+        $cashBalance = CashBalance::firstOrCreate(
+            ['season_id' => $seasonId],
+            ['amount' => 0, 'last_updated' => now()]
+        );
+
+        if ($operation === 'add') {
+            $cashBalance->amount += $amount;
+        } else {
+            $cashBalance->amount -= $amount;
+        }
+
+        $cashBalance->last_updated = now();
+        $cashBalance->save();
+    }
+
+    /**
+     * Determine payment status based on amounts.
+     */
+    private function determinePaymentStatus(float $totalAmount, float $paidAmount): string
+    {
+        if ($paidAmount >= $totalAmount) {
+            return 'paid';
+        } elseif ($paidAmount > 0) {
+            return 'partial';
+        } else {
+            return 'due';
+        }
+    }
+
+    /**
+     * Get monthly data for charts.
+     */
+    private function getMonthlyData(Season $season): array
+    {
+        $months = [];
+        $currentDate = Carbon::now();
+
+        for ($i = 5; $i >= 0; $i--) {
+            $date = $currentDate->copy()->subMonths($i);
+            $monthStart = $date->copy()->startOfMonth();
+            $monthEnd = $date->copy()->endOfMonth();
+
+            $transactions = Transaction::where('season_id', $season->id)
+                ->whereBetween('transaction_date', [$monthStart, $monthEnd])
+                ->sum('total_amount');
+
+            $payments = Payment::where('season_id', $season->id)
+                ->whereBetween('payment_date', [$monthStart, $monthEnd])
+                ->sum('amount');
+
+            $expenses = Expense::where('season_id', $season->id)
+                ->whereBetween('expense_date', [$monthStart, $monthEnd])
+                ->sum('amount');
+
+            $months[] = [
+                'month' => $date->format('M Y'),
+                'transactions' => $transactions,
+                'payments' => $payments,
+                'expenses' => $expenses,
+                'profit' => $transactions - $expenses,
+            ];
+        }
+
+        return $months;
     }
 }

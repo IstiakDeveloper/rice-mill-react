@@ -9,7 +9,7 @@ class CashBalance extends Model
 {
     use HasFactory;
 
-    protected $table = 'cash_balance';
+    protected $table = 'cash_balances';
 
     protected $fillable = [
         'season_id',
