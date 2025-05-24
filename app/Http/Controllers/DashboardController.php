@@ -163,8 +163,8 @@ class DashboardController extends Controller
             // Validate input
             $validated = $request->validate([
                 'name' => 'required|string|max:255',
-                'email' => 'nullable|email',
-                'phone' => 'nullable|string',
+                'area' => 'nullable|string',
+                'phone_number' => 'nullable|string',
                 'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
             ]);
 
@@ -174,8 +174,10 @@ class DashboardController extends Controller
                 $validated['image'] = $imagePath;
             }
 
+            // dd($validated);
             // Create customer
             Customer::create($validated);
+
 
             // Redirect with success message
             return redirect()->route('customer.index')->with('success', 'Customer added successfully!');

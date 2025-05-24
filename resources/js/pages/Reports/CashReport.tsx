@@ -77,7 +77,7 @@ export default function CashReport({
     }
 
     const applyFilters = () => {
-        filterForm.get(route('cash-report.index'));
+        filterForm.get(route('reports.cash-report.index'));
     };
 
     return (
