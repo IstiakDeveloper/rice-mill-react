@@ -34,7 +34,6 @@ class DashboardController extends Controller
             $dashboardData = $this->collectDashboardData($currentSeason);
 
             return Inertia::render('Dashboard', $dashboardData);
-
         } catch (\Exception $e) {
             Log::error('Dashboard loading failed', [
                 'error' => $e->getMessage(),
@@ -80,13 +79,11 @@ class DashboardController extends Controller
             });
 
             return redirect()->route('dashboard')->with('success', 'Sale transaction created successfully!');
-
         } catch (ValidationException $e) {
             return redirect()->back()
                 ->withErrors($e->errors())
                 ->withInput()
                 ->with('error', 'Please check the form data and try again.');
-
         } catch (\Exception $e) {
             Log::error('Transaction creation failed', [
                 'customer_id' => $request->customer_id ?? null,
@@ -133,13 +130,11 @@ class DashboardController extends Controller
             });
 
             return redirect()->route('dashboard')->with('success', 'Payment recorded successfully!');
-
         } catch (ValidationException $e) {
             return redirect()->back()
                 ->withErrors($e->errors())
                 ->withInput()
                 ->with('error', 'Please check the payment information and try again.');
-
         } catch (\Exception $e) {
             Log::error('Payment recording failed', [
                 'customer_id' => $request->customer_id ?? null,
@@ -181,11 +176,9 @@ class DashboardController extends Controller
 
             // Redirect with success message
             return redirect()->route('customer.index')->with('success', 'Customer added successfully!');
-
         } catch (\Illuminate\Validation\ValidationException $e) {
             // Redirect back with validation errors
             return redirect()->back()->withErrors($e->errors())->withInput();
-
         } catch (\Exception $e) {
             // Redirect with error message
             return redirect()->back()->with('error', 'Something went wrong. Please try again.')->withInput();
@@ -204,14 +197,12 @@ class DashboardController extends Controller
             $sackType = SackType::create($validated);
 
             return redirect()->route('dashboard')->with('success', 'Sack type created successfully!');
-
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid product data provided.',
                 'errors' => $e->errors()
             ], 422);
-
         } catch (\Exception $e) {
             Log::error('Sack type creation failed', [
                 'name' => $request->name ?? null,
@@ -241,10 +232,8 @@ class DashboardController extends Controller
             $season = Season::find($validated['season_id']);
 
             return redirect()->route('dashboard')->with('success', "Successfully switched to season: {$season->name}");
-
         } catch (ValidationException $e) {
             return redirect()->back()->with('error', 'Invalid season selected.');
-
         } catch (\Exception $e) {
             Log::error('Season switching failed', [
                 'season_id' => $request->season_id ?? null,
@@ -286,7 +275,6 @@ class DashboardController extends Controller
                     'season' => $currentSeason
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Customer transactions retrieval failed', [
                 'customer_id' => $customer->id,
@@ -434,7 +422,7 @@ class DashboardController extends Controller
             'notes' => 'nullable|string|max:1000',
             'items' => 'required|array|min:1|max:20',
             'items.*.sack_type_id' => 'required|exists:sack_types,id',
-            'items.*.quantity' => 'required|integer|min:1|max:10000',
+            'items.*.quantity' => 'required|numeric|min:0.1|max:999999.99',
             'items.*.unit_price' => 'required|numeric|min:0|max:999999.99',
         ]);
     }
@@ -486,13 +474,16 @@ class DashboardController extends Controller
     {
         $total = 0;
         foreach ($items as $item) {
-            $total += $item['quantity'] * $item['unit_price'];
+            // Ensure quantity is treated as float for decimal support
+            $quantity = floatval($item['quantity']);
+            $unitPrice = floatval($item['unit_price']);
+            $total += $quantity * $unitPrice;
         }
 
         return [
-            'total' => $total,
+            'total' => round($total, 2),  // Round to 2 decimal places
             'paid' => $paidAmount,
-            'due' => max(0, $total - $paidAmount),
+            'due' => max(0, round($total - $paidAmount, 2)),
             'status' => $this->determinePaymentStatus($total, $paidAmount)
         ];
     }
@@ -520,11 +511,15 @@ class DashboardController extends Controller
     private function createTransactionItems(Transaction $transaction, array $items): void
     {
         foreach ($items as $item) {
+            $quantity = floatval($item['quantity']);
+            $unitPrice = floatval($item['unit_price']);
+            $totalPrice = round($quantity * $unitPrice, 2);
+
             $transaction->items()->create([
                 'sack_type_id' => $item['sack_type_id'],
-                'quantity' => $item['quantity'],
-                'unit_price' => $item['unit_price'],
-                'total_price' => $item['quantity'] * $item['unit_price'],
+                'quantity' => $quantity,  // Store as decimal
+                'unit_price' => $unitPrice,
+                'total_price' => $totalPrice,
             ]);
         }
     }

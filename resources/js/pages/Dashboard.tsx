@@ -102,7 +102,7 @@ interface CustomerWithBalance {
 
 interface TransactionItem {
     sack_type_id: number | string;
-    quantity: number;
+    quantity: number;      // This will now support decimals
     unit_price: number;
 }
 
@@ -187,7 +187,7 @@ export default function Dashboard({
             ...transactionForm.data.items,
             {
                 sack_type_id: defaultSackType ? defaultSackType.id : '',
-                quantity: 1,
+                quantity: 1.0,  // Default to 1.0 instead of 1
                 unit_price: defaultSackType ? defaultSackType.price : 0
             }
         ]);
@@ -200,7 +200,24 @@ export default function Dashboard({
 
     const updateTransactionItem = (index: number, field: keyof TransactionItem, value: any) => {
         const newItems = [...transactionForm.data.items];
-        newItems[index] = { ...newItems[index], [field]: value };
+
+        if (field === 'quantity') {
+            // Handle decimal quantities
+            const numValue = parseFloat(value);
+            newItems[index] = {
+                ...newItems[index],
+                [field]: isNaN(numValue) || numValue <= 0 ? 0.1 : numValue
+            };
+        } else if (field === 'unit_price') {
+            // Handle decimal prices
+            const numValue = parseFloat(value);
+            newItems[index] = {
+                ...newItems[index],
+                [field]: isNaN(numValue) || numValue < 0 ? 0 : numValue
+            };
+        } else {
+            newItems[index] = { ...newItems[index], [field]: value };
+        }
 
         // Auto-update price when sack type changes
         if (field === 'sack_type_id') {
@@ -677,12 +694,15 @@ export default function Dashboard({
                                                         <TextInput
                                                             id={`quantity_${index}`}
                                                             type="number"
-                                                            min="1"
+                                                            min="0"
+                                                            step="any"
                                                             value={item.quantity}
-                                                            onChange={(e) => updateTransactionItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                                                            onChange={(e) => updateTransactionItem(index, 'quantity', parseFloat(e.target.value) || 0)}  // Removed .0 as it's redundant
                                                             className="mt-1 block w-full"
+                                                            placeholder="e.g. 1.66666, 2.33333, 0.125"
                                                             required
                                                         />
+                                                        <p className="text-xs text-gray-500 mt-1">You can enter decimal quantities like 0.5, 1.5, 2.5</p>
                                                     </div>
                                                     <div>
                                                         <InputLabel htmlFor={`unit_price_${index}`} value="Unit Price" />
