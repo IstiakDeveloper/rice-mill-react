@@ -1,4 +1,3 @@
-// resources/js/Pages/Transactions/Show.tsx
 import { Head, Link } from '@inertiajs/react';
 import AuthenticatedLayout from '@/layouts/AuthenticatedLayout';
 import { PageProps, Transaction as TransactionType } from '@/types';
@@ -43,6 +42,14 @@ const formatQuantity = (quantity: any): string => {
 };
 
 export default function Show({ auth, transaction }: TransactionShowProps) {
+  // Calculate actual balance from customer_balance table (passed from backend)
+  const customerBalance = transaction.customer?.balance || {
+    total_sales: 0,
+    total_payments: 0,
+    balance: 0,
+    advance_payment: 0
+  };
+
   return (
     <AuthenticatedLayout
       user={auth.user}
@@ -50,7 +57,7 @@ export default function Show({ auth, transaction }: TransactionShowProps) {
         <div className="flex justify-between items-center">
           <h2 className="font-semibold text-xl text-gray-800 leading-tight">Transaction Details</h2>
           <div className="space-x-2">
-            {transaction.payment_status !== 'paid' && (
+            {customerBalance.balance > 0 && (
               <Link
                 href={route('payments.create', { transaction_id: transaction.id })}
                 className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
@@ -95,22 +102,42 @@ export default function Show({ auth, transaction }: TransactionShowProps) {
                   <p className="mt-1 text-lg font-bold text-gray-900">{formatCurrency(transaction.total_amount)}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Paid Amount</p>
-                  <p className="mt-1 text-lg text-green-600">{formatCurrency(transaction.paid_amount)}</p>
+                  <p className="text-sm font-medium text-gray-500">Customer Total Sales</p>
+                  <p className="mt-1 text-lg text-blue-600">{formatCurrency(customerBalance.total_sales)}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Due Amount</p>
-                  <p className="mt-1 text-lg text-red-600">{formatCurrency(transaction.due_amount)}</p>
+                  <p className="text-sm font-medium text-gray-500">Customer Total Payments</p>
+                  <p className="mt-1 text-lg text-green-600">{formatCurrency(customerBalance.total_payments)}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Status</p>
+                  <p className="text-sm font-medium text-gray-500">
+                    {customerBalance.balance > 0 ? 'Due Amount' : 'Advance Payment'}
+                  </p>
+                  <p className={`mt-1 text-lg font-bold ${customerBalance.balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {customerBalance.balance > 0
+                      ? formatCurrency(customerBalance.balance)
+                      : formatCurrency(customerBalance.advance_payment)
+                    }
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Balance Status</p>
                   <p className="mt-1">
                     <span
-                      className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getPaymentStatusClass(
-                        transaction.payment_status
-                      )}`}
+                      className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        customerBalance.balance > 0
+                          ? 'bg-red-100 text-red-800'
+                          : customerBalance.advance_payment > 0
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}
                     >
-                      {getPaymentStatusText(transaction.payment_status)}
+                      {customerBalance.balance > 0
+                        ? 'Due'
+                        : customerBalance.advance_payment > 0
+                        ? 'Advance'
+                        : 'Clear'
+                      }
                     </span>
                   </p>
                 </div>

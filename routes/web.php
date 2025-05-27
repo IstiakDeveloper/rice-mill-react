@@ -49,7 +49,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('expense-categories', ExpenseCategoryController::class);
     Route::resource('customers', CustomerController::class)->except(['show', 'edit']);
     Route::resource('sack-types', SackTypeController::class)->except(['show', 'edit']);
-    Route::resource('transactions', TransactionController::class)->except(['edit', 'update', 'destroy']);
+    Route::resource('transactions', TransactionController::class);
     Route::resource('payments', PaymentController::class)->except(['edit', 'update', 'destroy', 'show']);
 
     // Customer Payments
