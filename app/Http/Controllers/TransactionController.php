@@ -29,7 +29,7 @@ class TransactionController extends Controller
         $transactions = Transaction::with(['customer', 'items.sackType'])
             ->where('season_id', $currentSeason->id) // Only show current season transactions
             ->latest()
-            ->paginate(10);
+            ->paginate(1000);
 
         // Load customer balance data for each transaction
         foreach ($transactions as $transaction) {

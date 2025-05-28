@@ -47,13 +47,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('expenses', ExpenseController::class);
     Route::resource('additional-incomes', AdditionalIncomeController::class);
     Route::resource('expense-categories', ExpenseCategoryController::class);
-    Route::resource('customers', CustomerController::class)->except(['show', 'edit']);
+    Route::resource('customers', CustomerController::class);
     Route::resource('sack-types', SackTypeController::class)->except(['show', 'edit']);
     Route::resource('transactions', TransactionController::class);
-    Route::resource('payments', PaymentController::class)->except(['edit', 'update', 'destroy', 'show']);
+    Route::resource('payments', PaymentController::class);
 
-    // Customer Payments
-    Route::get('customer/{customer}/payments', [PaymentController::class, 'customerPayments'])->name('customer.payments');
+
+
+    Route::get('/transactions/{transaction}/payments', [PaymentController::class, 'index'])->name('transaction.payments');
+
 
     // Report Routes
     Route::prefix('reports')->name('reports.')->group(function () {

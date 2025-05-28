@@ -97,4 +97,10 @@ class Transaction extends Model
             }
         });
     }
+
+    public function transactionItems(): HasMany
+    {
+        return $this->hasMany(TransactionItem::class);
+    }
+
 }

@@ -35,4 +35,9 @@ class Customer extends Model
     {
         return $this->transactions()->sum('due_amount');
     }
+
+    public function customerBalances(): HasMany
+    {
+        return $this->hasMany(CustomerBalance::class);
+    }
 }
