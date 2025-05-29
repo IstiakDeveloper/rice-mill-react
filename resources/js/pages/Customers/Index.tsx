@@ -259,7 +259,7 @@ export default function Index({ auth, customers, seasons, currentSeason }: Custo
                                 <div className="ml-4">
                                     <p className="text-sm font-medium text-gray-600">Total Balance</p>
                                     <p className="text-2xl font-bold text-gray-900">
-                                        ৳{formatCurrency(customers.reduce((sum, c) => sum + Math.abs(c.remaining_balance), 0))}
+                                        {formatCurrency(customers.reduce((sum, c) => sum + Math.abs(c.remaining_balance), 0))}
                                     </p>
                                 </div>
                             </div>
@@ -293,9 +293,9 @@ export default function Index({ auth, customers, seasons, currentSeason }: Custo
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             Status
                                         </th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             Last Activity
-                                        </th>
+                                        </th> */}
                                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             Actions
                                         </th>
@@ -350,10 +350,10 @@ export default function Index({ auth, customers, seasons, currentSeason }: Custo
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    ৳{formatCurrency(customer.total_sales)}
+                                                    {formatCurrency(customer.total_sales)}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    ৳{formatCurrency(customer.total_payments)}
+                                                    {formatCurrency(customer.total_payments)}
                                                     <div className="text-xs text-gray-500">
                                                         {toBengaliDigits(customer.payment_count.toString())} payments
                                                     </div>
@@ -366,18 +366,18 @@ export default function Index({ auth, customers, seasons, currentSeason }: Custo
                                                             ? 'text-green-600'
                                                             : 'text-gray-900'
                                                     }`}>
-                                                        ৳{formatCurrency(Math.abs(customer.remaining_balance))}
+                                                        {formatCurrency(Math.abs(customer.remaining_balance))}
                                                     </span>
                                                     {customer.advance_payment > 0 && (
                                                         <div className="text-xs text-green-600">
-                                                            Advance: ৳{formatCurrency(customer.advance_payment)}
+                                                            Advance: {formatCurrency(customer.advance_payment)}
                                                         </div>
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     {getStatusBadge(customer.payment_status)}
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                {/* <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                                     {customer.last_transaction_date && (
                                                         <div className="flex items-center text-xs">
                                                             <Calendar className="w-3 h-3 mr-1" />
@@ -390,7 +390,7 @@ export default function Index({ auth, customers, seasons, currentSeason }: Custo
                                                             {new Date(customer.last_payment_date).toLocaleDateString()}
                                                         </div>
                                                     )}
-                                                </td>
+                                                </td> */}
                                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                     <div className="flex items-center justify-end gap-2">
                                                         <Link

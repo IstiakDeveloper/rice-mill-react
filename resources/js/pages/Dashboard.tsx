@@ -13,6 +13,7 @@ import SelectInput from '@/components/selectInput';
 import InputError from '@/components/inputError';
 import { formatCurrency, formatDate } from '@/utils';
 import CustomerSelect from '@/components/customerSelect';
+import { log } from 'console';
 
 interface Customer {
     id: number;
@@ -71,6 +72,7 @@ interface DashboardProps extends PageProps {
     todayPayments: number;
     todayExpenses: number;
     seasonTransactions: number;
+    seasonTotalQuantity: number;
     seasonPayments: number;
     totalCustomerDue: number;        // Updated from seasonDue
     totalCustomerAdvance: number;    // New field
@@ -116,6 +118,7 @@ export default function Dashboard({
     seasonTransactions,
     seasonPayments,
     totalCustomerDue,        // Updated field name
+    seasonTotalQuantity,
     totalCustomerAdvance,    // New field
     seasonExpenses,
     seasonFundInputs,
@@ -172,6 +175,7 @@ export default function Dashboard({
         season_id: currentSeason.id,
     });
 
+    // console.log(seasonTransactions);
     // Initialize first item with first sack type
     useEffect(() => {
         if (sackTypes.length > 0 && !transactionForm.data.items[0].sack_type_id) {
@@ -486,7 +490,7 @@ export default function Dashboard({
                             <h3 className="text-lg font-semibold text-gray-900">Season Summary</h3>
                         </div>
                         <div className="p-6">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
                                 <div className="text-center p-4 bg-gray-50 rounded-lg">
                                     <p className="text-sm font-medium text-gray-600 mb-1">Total Sales</p>
                                     <p className="text-xl font-bold text-gray-900">{formatCurrency(seasonTransactions)}</p>
@@ -504,6 +508,11 @@ export default function Dashboard({
                                     <p className={`text-xl font-bold ${seasonProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                         {formatCurrency(seasonProfit)}
                                     </p>
+                                </div>
+
+                                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                                    <p className="text-sm font-medium text-gray-600 mb-1">Total Sack</p>
+                                    <p className="text-xl font-bold text-gray-900">{seasonTotalQuantity}</p>
                                 </div>
                             </div>
                         </div>

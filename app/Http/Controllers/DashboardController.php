@@ -356,6 +356,10 @@ class DashboardController extends Controller
             'seasonExpenses' => Expense::where('season_id', $currentSeason->id)->sum('amount'),
             'seasonFundInputs' => FundInput::where('season_id', $currentSeason->id)->sum('amount'),
             'seasonAdditionalIncomes' => AdditionalIncome::where('season_id', $currentSeason->id)->sum('amount'),
+            'seasonTotalQuantity' => \App\Models\TransactionItem::whereIn(
+                'transaction_id',
+                \App\Models\Transaction::where('season_id', $currentSeason->id)->pluck('id')
+            )->sum('quantity'),
 
             // Customer balances
             'totalCustomerDue' => CustomerBalance::where('season_id', $currentSeason->id)
@@ -394,6 +398,7 @@ class DashboardController extends Controller
             'sackTypes' => SackType::orderBy('name')->get(),
             'monthlyData' => $this->getMonthlyData($currentSeason),
         ];
+
     }
 
     /**

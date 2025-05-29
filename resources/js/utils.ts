@@ -2,33 +2,21 @@
  * Format a number as currency in Bengali (BDT)
  */
 export function formatCurrency(amount: number): string {
-    // First, get the BDT currency symbol from Bengali locale
-    const symbol = new Intl.NumberFormat('bn-BD', {
+    return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'BDT',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-    })
-        .formatToParts(0)
-        .find(part => part.type === 'currency')?.value || '৳';
-
-    // Now format the number in English digits
-    const formattedNumber = new Intl.NumberFormat('en-US', {
+        currencyDisplay: 'narrowSymbol', // or use 'symbol'
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
     }).format(amount);
-
-    // Combine symbol with English number
-    return `${symbol}${formattedNumber}`;
 }
-
 
 /**
  * Convert English digits to Bengali digits
  */
 export function toBengaliDigits(number: number | string): string {
     const englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-    const bengaliDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+    const bengaliDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
     return number.toString().replace(/[0-9]/g, function (match) {
         return bengaliDigits[englishDigits.indexOf(match)];

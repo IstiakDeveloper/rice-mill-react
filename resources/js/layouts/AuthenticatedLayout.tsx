@@ -66,8 +66,8 @@ export default function Authenticated({ user, header, children }: Props) {
                                     Customers
                                 </NavLink>
 
-                                {/* Operations Dropdown */}
-                                <div className="relative">
+                                {/* Operations Dropdown - Fixed */}
+                                <div className="relative nav-dropdown after:content-[''] after:absolute after:top-full after:left-0 after:right-0 after:h-2 after:bg-transparent after:pointer-events-auto">
                                     <Dropdown>
                                         <Dropdown.Trigger>
                                             <NavButton
@@ -93,8 +93,8 @@ export default function Authenticated({ user, header, children }: Props) {
                                     </Dropdown>
                                 </div>
 
-                                {/* Finance Dropdown */}
-                                <div className="relative">
+                                {/* Finance Dropdown - Fixed */}
+                                <div className="relative nav-dropdown after:content-[''] after:absolute after:top-full after:left-0 after:right-0 after:h-2 after:bg-transparent after:pointer-events-auto">
                                     <Dropdown>
                                         <Dropdown.Trigger>
                                             <NavButton
@@ -123,8 +123,8 @@ export default function Authenticated({ user, header, children }: Props) {
                                     </Dropdown>
                                 </div>
 
-                                {/* Reports Dropdown */}
-                                <div className="relative">
+                                {/* Reports Dropdown - Fixed */}
+                                <div className="relative nav-dropdown after:content-[''] after:absolute after:top-full after:left-0 after:right-0 after:h-2 after:bg-transparent after:pointer-events-auto">
                                     <Dropdown>
                                         <Dropdown.Trigger>
                                             <NavButton
@@ -155,9 +155,9 @@ export default function Authenticated({ user, header, children }: Props) {
                             </div>
                         </div>
 
-                        {/* Right side - User Menu */}
+                        {/* Right side - User Menu - Fixed */}
                         <div className="hidden sm:flex sm:items-center sm:ml-6">
-                            <div className="relative">
+                            <div className="relative nav-dropdown after:content-[''] after:absolute after:top-full after:left-0 after:right-0 after:h-2 after:bg-transparent after:pointer-events-auto">
                                 <Dropdown>
                                     <Dropdown.Trigger>
                                         <button className="flex items-center max-w-xs bg-white rounded-xl p-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 hover:bg-gray-50 transition-all duration-200 border border-gray-200">
@@ -348,15 +348,16 @@ interface NavButtonProps {
     active: boolean;
     children: React.ReactNode;
     icon: React.ComponentType<{ className?: string }>;
+    className?: string;
 }
 
-function NavButton({ active, children, icon: Icon }: NavButtonProps) {
+function NavButton({ active, children, icon: Icon, className = '' }: NavButtonProps) {
     return (
         <button
             className={`inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${active
                     ? 'bg-green-100 text-green-800 shadow-sm border border-green-200'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                }`}
+                } ${className}`}
         >
             <Icon className="w-4 h-4 mr-2" />
             {children}
@@ -391,21 +392,40 @@ function ResponsiveNavLink({ method = 'get', as = 'a', href, active = false, chi
     );
 }
 
-// Dropdown Component
+// Enhanced Dropdown Component with Hover Fix
 interface DropdownProps {
     children: React.ReactNode;
 }
 
 function Dropdown({ children }: DropdownProps) {
     const [open, setOpen] = useState(false);
+    const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
+
+    const handleMouseEnter = () => {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            setTimeoutId(null);
+        }
+        setOpen(true);
+    };
+
+    const handleMouseLeave = () => {
+        const id = setTimeout(() => {
+            setOpen(false);
+        }, 150); // 150ms delay for smooth transition
+        setTimeoutId(id);
+    };
 
     return (
-        <div className="relative" onMouseLeave={() => setOpen(false)}>
+        <div
+            className="relative"
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+        >
             {React.Children.map(children, (child) => {
                 if (React.isValidElement(child) && child.type === Dropdown.Trigger) {
                     return React.cloneElement(child as React.ReactElement<any>, {
                         onClick: () => setOpen(!open),
-                        onMouseEnter: () => setOpen(true),
                     });
                 }
 
@@ -425,11 +445,10 @@ function Dropdown({ children }: DropdownProps) {
 interface DropdownTriggerProps {
     children: React.ReactNode;
     onClick?: () => void;
-    onMouseEnter?: () => void;
 }
 
-Dropdown.Trigger = function DropdownTrigger({ children, onClick, onMouseEnter }: DropdownTriggerProps) {
-    return <div onClick={onClick} onMouseEnter={onMouseEnter}>{children}</div>;
+Dropdown.Trigger = function DropdownTrigger({ children, onClick }: DropdownTriggerProps) {
+    return <div onClick={onClick}>{children}</div>;
 };
 
 interface DropdownContentProps {
@@ -437,24 +456,24 @@ interface DropdownContentProps {
     open?: boolean;
     setOpen?: (open: boolean) => void;
     align?: 'left' | 'right';
+    className?: string;
 }
 
-Dropdown.Content = function DropdownContent({ children, open = false, setOpen, align = 'left' }: DropdownContentProps) {
+Dropdown.Content = function DropdownContent({ children, open = false, setOpen, align = 'left', className = '' }: DropdownContentProps) {
     return (
         <Transition
             show={open}
             enter="transition ease-out duration-200"
             enterFrom="transform opacity-0 scale-95"
             enterTo="transform opacity-100 scale-100"
-            leave="transition ease-in duration-75"
+            leave="transition ease-in duration-100"
             leaveFrom="transform opacity-100 scale-100"
             leaveTo="transform opacity-0 scale-95"
         >
             <div
-                className={`absolute z-50 mt-1 w-56 rounded-xl shadow-lg bg-white border border-gray-200 focus:outline-none ${align === 'right' ? 'right-0 origin-top-right' : 'left-0 origin-top-left'
-                    }`}
+                className={`absolute z-50 mt-1 rounded-xl shadow-lg bg-white border border-gray-200 focus:outline-none ${align === 'right' ? 'right-0 origin-top-right' : 'left-0 origin-top-left'
+                    } ${className}`}
                 style={{ top: '100%' }}
-                onMouseLeave={() => setOpen && setOpen(false)}
             >
                 <div className="py-2">
                     {children}

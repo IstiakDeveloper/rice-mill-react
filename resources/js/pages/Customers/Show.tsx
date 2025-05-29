@@ -86,7 +86,7 @@ interface CustomerShowProps extends PageProps {
 export default function Show({ auth, customer, seasons, currentSeason, seasonSummary }: CustomerShowProps) {
     const totalSacks = customer.transactions.flatMap(transaction =>
         transaction.transaction_items
-    ).reduce((sum, item) => sum + item.quantity, 0);
+    ).reduce((sum, item) => sum + Number(item.quantity), 0);
 
     const overallBalance = customer.customer_balances.reduce((sum, balance) => sum + balance.balance, 0);
     const overallSales = customer.customer_balances.reduce((sum, balance) => sum + balance.total_sales, 0);
@@ -174,7 +174,7 @@ export default function Show({ auth, customer, seasons, currentSeason, seasonSum
                                 </div>
                                 <div className="ml-4">
                                     <p className="text-sm font-medium text-gray-600">Total Sales</p>
-                                    <p className="text-2xl font-bold text-gray-900">৳{formatCurrency(overallSales)}</p>
+                                    <p className="text-2xl font-bold text-gray-900">{formatCurrency(overallSales)}</p>
                                 </div>
                             </div>
                         </div>
@@ -185,7 +185,7 @@ export default function Show({ auth, customer, seasons, currentSeason, seasonSum
                                 </div>
                                 <div className="ml-4">
                                     <p className="text-sm font-medium text-gray-600">Total Payments</p>
-                                    <p className="text-2xl font-bold text-gray-900">৳{formatCurrency(overallPayments)}</p>
+                                    <p className="text-2xl font-bold text-gray-900">{formatCurrency(overallPayments)}</p>
                                 </div>
                             </div>
                         </div>
@@ -201,7 +201,7 @@ export default function Show({ auth, customer, seasons, currentSeason, seasonSum
                                 <div className="ml-4">
                                     <p className="text-sm font-medium text-gray-600">Current Balance</p>
                                     <p className={`text-2xl font-bold ${overallBalance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                        ৳{formatCurrency(Math.abs(overallBalance))}
+                                        {formatCurrency(Math.abs(overallBalance))}
                                     </p>
                                 </div>
                             </div>
@@ -222,22 +222,22 @@ export default function Show({ auth, customer, seasons, currentSeason, seasonSum
                                             <div className="grid grid-cols-2 gap-4 text-sm">
                                                 <div>
                                                     <p className="text-gray-600">Sales</p>
-                                                    <p className="font-medium">৳{formatCurrency(summary.total_sales)}</p>
+                                                    <p className="font-medium">{formatCurrency(summary.total_sales)}</p>
                                                 </div>
                                                 <div>
                                                     <p className="text-gray-600">Payments</p>
-                                                    <p className="font-medium">৳{formatCurrency(summary.total_payments)}</p>
+                                                    <p className="font-medium">{formatCurrency(summary.total_payments)}</p>
                                                 </div>
                                                 <div>
                                                     <p className="text-gray-600">Balance</p>
                                                     <p className={`font-medium ${summary.balance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                                        ৳{formatCurrency(Math.abs(summary.balance))}
+                                                        {formatCurrency(Math.abs(summary.balance))}
                                                     </p>
                                                 </div>
                                                 {summary.advance_payment > 0 && (
                                                     <div>
                                                         <p className="text-gray-600">Advance</p>
-                                                        <p className="font-medium text-green-600">৳{formatCurrency(summary.advance_payment)}</p>
+                                                        <p className="font-medium text-green-600">{formatCurrency(summary.advance_payment)}</p>
                                                     </div>
                                                 )}
                                             </div>
@@ -282,10 +282,9 @@ export default function Show({ auth, customer, seasons, currentSeason, seasonSum
                                                 </div>
                                             </div>
                                             <div className="text-right">
-                                                <p className={`text-sm font-medium ${
-                                                    'transaction_date' in activity ? 'text-blue-600' : 'text-green-600'
-                                                }`}>
-                                                    ৳{formatCurrency('transaction_date' in activity ? activity.total_amount : activity.amount)}
+                                                <p className={`text-sm font-medium ${'transaction_date' in activity ? 'text-blue-600' : 'text-green-600'
+                                                    }`}>
+                                                    {formatCurrency('transaction_date' in activity ? activity.total_amount : activity.amount)}
                                                 </p>
                                             </div>
                                         </div>
@@ -335,16 +334,15 @@ export default function Show({ auth, customer, seasons, currentSeason, seasonSum
                                                     ))}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                    ৳{formatCurrency(transaction.total_amount)}
+                                                    {formatCurrency(transaction.total_amount)}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                                                        transaction.payment_status === 'paid'
+                                                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${transaction.payment_status === 'paid'
                                                             ? 'bg-green-100 text-green-800'
                                                             : transaction.payment_status === 'partial'
-                                                            ? 'bg-yellow-100 text-yellow-800'
-                                                            : 'bg-red-100 text-red-800'
-                                                    }`}>
+                                                                ? 'bg-yellow-100 text-yellow-800'
+                                                                : 'bg-red-100 text-red-800'
+                                                        }`}>
                                                         {transaction.payment_status}
                                                     </span>
                                                 </td>
@@ -391,7 +389,7 @@ export default function Show({ auth, customer, seasons, currentSeason, seasonSum
                                                     {payment.season.name}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
-                                                    ৳{formatCurrency(payment.amount)}
+                                                    {formatCurrency(payment.amount)}
                                                 </td>
                                                 <td className="px-6 py-4 text-sm text-gray-500">
                                                     {payment.notes || '-'}
