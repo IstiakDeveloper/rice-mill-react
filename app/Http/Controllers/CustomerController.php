@@ -18,67 +18,77 @@ class CustomerController extends Controller
         $currentSeason = Season::latest()->first();
 
         $customers = Customer::with([
-            'customerBalances' => function($query) use ($currentSeason) {
+            'customerBalances' => function ($query) use ($currentSeason) {
                 if ($currentSeason) {
                     $query->where('season_id', $currentSeason->id);
                 }
             },
-            'transactions' => function($query) use ($currentSeason) {
+            'transactions' => function ($query) use ($currentSeason) {
                 if ($currentSeason) {
                     $query->where('season_id', $currentSeason->id)
-                          ->with(['transactionItems.sackType']);
+                        ->with(['transactionItems.sackType']);
                 }
             },
-            'payments' => function($query) use ($currentSeason) {
+            'payments' => function ($query) use ($currentSeason) {
                 if ($currentSeason) {
                     $query->where('season_id', $currentSeason->id);
                 }
             }
         ])
-        ->get()
-        ->map(function ($customer) use ($currentSeason) {
-            $balance = $customer->customerBalances->first();
+            ->get()
+            ->map(function ($customer) use ($currentSeason) {
+                $balance = $customer->customerBalances->first();
 
-            // Calculate total sacks purchased
-            $totalSacks = $customer->transactions->flatMap(function($transaction) {
-                return $transaction->transactionItems;
-            })->sum('quantity');
+                // Calculate total sacks purchased
+                $totalSacks = $customer->transactions->flatMap(function ($transaction) {
+                    return $transaction->transactionItems;
+                })->sum('quantity');
 
-            // Get latest transaction and payment dates
-            $latestTransaction = $customer->transactions->sortByDesc('transaction_date')->first();
-            $latestPayment = $customer->payments->sortByDesc('payment_date')->first();
+                // Get latest transaction and payment dates
+                $latestTransaction = $customer->transactions->sortByDesc('transaction_date')->first();
+                $latestPayment = $customer->payments->sortByDesc('payment_date')->first();
 
-            // Calculate payment summary
-            $totalSales = $balance ? $balance->total_sales : 0;
-            $totalPayments = $balance ? $balance->total_payments : 0;
-            $remainingBalance = $balance ? $balance->balance : 0;
-            $advancePayment = $balance ? $balance->advance_payment : 0;
+                // Calculate payment summary
+                $totalSales = $balance ? $balance->total_sales : 0;
+                $totalPayments = $balance ? $balance->total_payments : 0;
+                $remainingBalance = $balance ? $balance->balance : 0;
+                $advancePayment = $balance ? $balance->advance_payment : 0;
 
-            return [
-                'id' => $customer->id,
-                'name' => $customer->name,
-                'area' => $customer->area,
-                'phone_number' => $customer->phone_number,
-                'image' => $customer->image,
-                'total_sacks' => round($totalSacks, 2),
-                'total_sales' => $totalSales,
-                'total_payments' => $totalPayments,
-                'remaining_balance' => $remainingBalance,
-                'advance_payment' => $advancePayment,
-                'last_transaction_date' => $latestTransaction ? $latestTransaction->transaction_date : null,
-                'last_payment_date' => $latestPayment ? $latestPayment->payment_date : null,
-                'payment_status' => $this->getPaymentStatus($remainingBalance, $advancePayment),
-                'transaction_count' => $customer->transactions->count(),
-                'payment_count' => $customer->payments->count(),
-            ];
-        });
+                return [
+                    'id' => $customer->id,
+                    'name' => $customer->name,
+                    'area' => $customer->area,
+                    'phone_number' => $customer->phone_number,
+                    'image' => $customer->image,
+                    'total_sacks' => round($totalSacks, 2),
+                    'total_sales' => $totalSales,
+                    'total_payments' => $totalPayments,
+                    'remaining_balance' => $remainingBalance,
+                    'advance_payment' => $advancePayment,
+                    'last_transaction_date' => $latestTransaction ? $latestTransaction->transaction_date : null,
+                    'last_payment_date' => $latestPayment ? $latestPayment->payment_date : null,
+                    'payment_status' => $this->getPaymentStatus($remainingBalance, $advancePayment),
+                    'transaction_count' => $customer->transactions->count(),
+                    'payment_count' => $customer->payments->count(),
+                ];
+            });
 
         $seasons = Season::orderBy('name')->get();
+
+        $existingAreas = Customer::distinct()
+            ->whereNotNull('area')
+            ->where('area', '!=', '')
+            ->pluck('area')
+            ->filter()
+            ->sort()
+            ->values();
 
         return Inertia::render('Customers/Index', [
             'customers' => $customers,
             'seasons' => $seasons,
-            'currentSeason' => $currentSeason
+            'currentSeason' => $currentSeason,
+            'existingAreas' => $existingAreas,
+
         ]);
     }
 
@@ -122,18 +132,18 @@ class CustomerController extends Controller
 
         $customerData = $customer->load([
             'customerBalances.season',
-            'transactions' => function($query) {
+            'transactions' => function ($query) {
                 $query->with(['season', 'transactionItems.sackType'])
-                      ->orderBy('transaction_date', 'desc');
+                    ->orderBy('transaction_date', 'desc');
             },
-            'payments' => function($query) {
+            'payments' => function ($query) {
                 $query->with('season')
-                      ->orderBy('payment_date', 'desc');
+                    ->orderBy('payment_date', 'desc');
             }
         ]);
 
         // Get season-wise summary
-        $seasonSummary = $customer->customerBalances->map(function($balance) {
+        $seasonSummary = $customer->customerBalances->map(function ($balance) {
             return [
                 'season_id' => $balance->season_id,
                 'season_name' => $balance->season->name,
@@ -218,51 +228,51 @@ class CustomerController extends Controller
         }
 
         $customers = Customer::with([
-            'customerBalances' => function($query) use ($seasonId) {
+            'customerBalances' => function ($query) use ($seasonId) {
                 $query->where('season_id', $seasonId);
             },
-            'transactions' => function($query) use ($seasonId) {
+            'transactions' => function ($query) use ($seasonId) {
                 $query->where('season_id', $seasonId)
-                      ->with(['transactionItems.sackType']);
+                    ->with(['transactionItems.sackType']);
             },
-            'payments' => function($query) use ($seasonId) {
+            'payments' => function ($query) use ($seasonId) {
                 $query->where('season_id', $seasonId);
             }
         ])
-        ->get()
-        ->map(function ($customer) {
-            $balance = $customer->customerBalances->first();
+            ->get()
+            ->map(function ($customer) {
+                $balance = $customer->customerBalances->first();
 
-            $totalSacks = $customer->transactions->flatMap(function($transaction) {
-                return $transaction->transactionItems;
-            })->sum('quantity');
+                $totalSacks = $customer->transactions->flatMap(function ($transaction) {
+                    return $transaction->transactionItems;
+                })->sum('quantity');
 
-            $latestTransaction = $customer->transactions->sortByDesc('transaction_date')->first();
-            $latestPayment = $customer->payments->sortByDesc('payment_date')->first();
+                $latestTransaction = $customer->transactions->sortByDesc('transaction_date')->first();
+                $latestPayment = $customer->payments->sortByDesc('payment_date')->first();
 
-            $totalSales = $balance ? $balance->total_sales : 0;
-            $totalPayments = $balance ? $balance->total_payments : 0;
-            $remainingBalance = $balance ? $balance->balance : 0;
-            $advancePayment = $balance ? $balance->advance_payment : 0;
+                $totalSales = $balance ? $balance->total_sales : 0;
+                $totalPayments = $balance ? $balance->total_payments : 0;
+                $remainingBalance = $balance ? $balance->balance : 0;
+                $advancePayment = $balance ? $balance->advance_payment : 0;
 
-            return [
-                'id' => $customer->id,
-                'name' => $customer->name,
-                'area' => $customer->area,
-                'phone_number' => $customer->phone_number,
-                'image' => $customer->image,
-                'total_sacks' => round($totalSacks, 2),
-                'total_sales' => $totalSales,
-                'total_payments' => $totalPayments,
-                'remaining_balance' => $remainingBalance,
-                'advance_payment' => $advancePayment,
-                'last_transaction_date' => $latestTransaction ? $latestTransaction->transaction_date : null,
-                'last_payment_date' => $latestPayment ? $latestPayment->payment_date : null,
-                'payment_status' => $this->getPaymentStatus($remainingBalance, $advancePayment),
-                'transaction_count' => $customer->transactions->count(),
-                'payment_count' => $customer->payments->count(),
-            ];
-        });
+                return [
+                    'id' => $customer->id,
+                    'name' => $customer->name,
+                    'area' => $customer->area,
+                    'phone_number' => $customer->phone_number,
+                    'image' => $customer->image,
+                    'total_sacks' => round($totalSacks, 2),
+                    'total_sales' => $totalSales,
+                    'total_payments' => $totalPayments,
+                    'remaining_balance' => $remainingBalance,
+                    'advance_payment' => $advancePayment,
+                    'last_transaction_date' => $latestTransaction ? $latestTransaction->transaction_date : null,
+                    'last_payment_date' => $latestPayment ? $latestPayment->payment_date : null,
+                    'payment_status' => $this->getPaymentStatus($remainingBalance, $advancePayment),
+                    'transaction_count' => $customer->transactions->count(),
+                    'payment_count' => $customer->payments->count(),
+                ];
+            });
 
         $seasons = Season::orderBy('name')->get();
         $currentSeason = Season::find($seasonId);

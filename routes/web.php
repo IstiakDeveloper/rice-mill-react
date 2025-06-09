@@ -8,6 +8,7 @@ use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\FundInputController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\PublicCustomerController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SackTypeController;
 use App\Http\Controllers\TransactionController;
@@ -19,6 +20,10 @@ use Inertia\Inertia;
 Route::get('/', function () {
     return redirect()->route('login');
 })->name('home');
+
+Route::get('/customers-info', [PublicCustomerController::class, 'index'])->name('public.customers');
+Route::get('/api/customers-public', [PublicCustomerController::class, 'api'])->name('public.customers.api');
+
 
 Route::get('/storage-link', function () {
     Artisan::call('storage:link');

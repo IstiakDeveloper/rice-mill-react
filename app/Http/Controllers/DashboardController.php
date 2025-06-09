@@ -340,6 +340,15 @@ class DashboardController extends Controller
     {
         $today = Carbon::today();
 
+        // Get existing areas from customers (add this line)
+        $existingAreas = Customer::distinct()
+            ->whereNotNull('area')
+            ->where('area', '!=', '')
+            ->pluck('area')
+            ->filter()
+            ->sort()
+            ->values();
+
         return [
             // Season information
             'currentSeason' => $currentSeason,
@@ -397,8 +406,10 @@ class DashboardController extends Controller
             'customers' => Customer::orderBy('name')->get(),
             'sackTypes' => SackType::orderBy('name')->get(),
             'monthlyData' => $this->getMonthlyData($currentSeason),
-        ];
 
+            // Add existing areas for the searchable dropdown
+            'existingAreas' => $existingAreas,
+        ];
     }
 
     /**

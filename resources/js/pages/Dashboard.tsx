@@ -13,6 +13,7 @@ import SelectInput from '@/components/selectInput';
 import InputError from '@/components/inputError';
 import { formatCurrency, formatDate } from '@/utils';
 import CustomerSelect from '@/components/customerSelect';
+import SearchableArea from '@/components/SearchableArea';
 import { log } from 'console';
 
 interface Customer {
@@ -68,6 +69,7 @@ interface MonthlyData {
 interface DashboardProps extends PageProps {
     currentSeason: Season;
     seasons: Season[];
+
     todayTransactions: number;
     todayPayments: number;
     todayExpenses: number;
@@ -89,6 +91,7 @@ interface DashboardProps extends PageProps {
     customers: Customer[];
     sackTypes: SackType[];
     monthlyData: MonthlyData[];
+    existingAreas: string[]
 }
 
 interface CustomerWithBalance {
@@ -133,6 +136,7 @@ export default function Dashboard({
     customers,
     sackTypes,
     monthlyData,
+    existingAreas
 }: DashboardProps) {
     const [showTransactionModal, setShowTransactionModal] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -961,16 +965,15 @@ export default function Dashboard({
 
                                     <div>
                                         <InputLabel htmlFor="customer_area" value="Area *" />
-                                        <TextInput
-                                            id="customer_area"
-                                            type="text"
-                                            value={customerForm.data.area}
-                                            onChange={(e) => customerForm.setData('area', e.target.value)}
-                                            className="mt-2 block w-full"
-                                            placeholder="Location/Area"
-                                            required
-                                        />
-                                        <InputError message={customerForm.errors.area} className="mt-1" />
+                                        <div className="mt-2">
+                                            <SearchableArea
+                                                value={customerForm.data.area}
+                                                onChange={(value) => customerForm.setData('area', value)}
+                                                areas={existingAreas || []}
+                                                error={customerForm.errors.area}
+                                                placeholder="Select or type area..."
+                                            />
+                                        </div>
                                     </div>
                                 </div>
 

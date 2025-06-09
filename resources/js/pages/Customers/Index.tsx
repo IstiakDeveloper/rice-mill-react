@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useMemo, useRef, useEffect } from 'react';
 import { Head, useForm, Link } from '@inertiajs/react';
 import AuthenticatedLayout from '@/layouts/AuthenticatedLayout';
 import { PageProps } from '@/types';
@@ -16,7 +16,10 @@ import {
     Minus,
     Calendar,
     Banknote,
-    Package
+    Package,
+    Search,
+    MapPin,
+    ChevronDown
 } from 'lucide-react';
 
 interface Customer {
@@ -46,14 +49,153 @@ interface CustomersProps extends PageProps {
     customers: Customer[];
     seasons: Season[];
     currentSeason?: Season;
+    existingAreas: string[]; // Add this prop
 }
 
-export default function Index({ auth, customers, seasons, currentSeason }: CustomersProps) {
+// SearchableAreaDropdown Component
+interface SearchableAreaDropdownProps {
+    value: string;
+    onChange: (value: string) => void;
+    areas: string[];
+    error?: string;
+    placeholder?: string;
+}
+
+function SearchableAreaDropdown({
+    value,
+    onChange,
+    areas,
+    error,
+    placeholder = "Select or type area..."
+}: SearchableAreaDropdownProps) {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const dropdownRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // Filter areas based on search term
+    const filteredAreas = areas.filter(area =>
+        area.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+                setSearchTerm('');
+            }
+        }
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const inputValue = e.target.value;
+        setSearchTerm(inputValue);
+        onChange(inputValue);
+        setIsOpen(true);
+    };
+
+    const handleAreaSelect = (area: string) => {
+        onChange(area);
+        setSearchTerm('');
+        setIsOpen(false);
+    };
+
+    const handleInputFocus = () => {
+        setIsOpen(true);
+        setSearchTerm(value);
+    };
+
+    return (
+        <div className="relative" ref={dropdownRef}>
+            <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <MapPin className="h-4 w-4 text-gray-400" />
+                </div>
+                <input
+                    ref={inputRef}
+                    type="text"
+                    value={isOpen ? searchTerm : value}
+                    onChange={handleInputChange}
+                    onFocus={handleInputFocus}
+                    placeholder={placeholder}
+                    className={`block w-full pl-9 pr-10 py-2 border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        error ? 'border-red-300' : 'border-gray-300'
+                    }`}
+                    required
+                />
+                <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                    <ChevronDown
+                        className={`h-4 w-4 text-gray-400 transition-transform ${
+                            isOpen ? 'transform rotate-180' : ''
+                        }`}
+                    />
+                </div>
+            </div>
+
+            {/* Dropdown */}
+            {isOpen && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+                    {/* Show current input as "Add new" option if it doesn't exist */}
+                    {searchTerm && !areas.includes(searchTerm) && (
+                        <button
+                            type="button"
+                            onClick={() => handleAreaSelect(searchTerm)}
+                            className="w-full px-4 py-2 text-left hover:bg-blue-50 flex items-center text-blue-600 border-b border-gray-100"
+                        >
+                            <span className="mr-2">+</span>
+                            Add "{searchTerm}" as new area
+                        </button>
+                    )}
+
+                    {/* Existing areas */}
+                    {filteredAreas.length > 0 ? (
+                        filteredAreas.map((area, index) => (
+                            <button
+                                key={index}
+                                type="button"
+                                onClick={() => handleAreaSelect(area)}
+                                className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center"
+                            >
+                                <MapPin className="h-3 w-3 text-gray-400 mr-2" />
+                                {area}
+                            </button>
+                        ))
+                    ) : searchTerm ? null : (
+                        <div className="px-4 py-3 text-gray-500 text-sm">
+                            No areas found. Type to add a new area.
+                        </div>
+                    )}
+
+                    {/* Show all areas when no search term */}
+                    {!searchTerm && areas.length === 0 && (
+                        <div className="px-4 py-3 text-gray-500 text-sm">
+                            No areas available yet.
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {error && (
+                <p className="mt-1 text-sm text-red-600">{error}</p>
+            )}
+        </div>
+    );
+}
+
+export default function Index({ auth, customers, seasons, currentSeason, existingAreas }: CustomersProps) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
     const [deleteConfirmationId, setDeleteConfirmationId] = useState<number | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [selectedSeason, setSelectedSeason] = useState<number | null>(currentSeason?.id || null);
+
+    // New state for search and filtering
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedArea, setSelectedArea] = useState('');
 
     const { data, setData, post, put, errors, processing, reset } = useForm({
         name: '',
@@ -61,6 +203,32 @@ export default function Index({ auth, customers, seasons, currentSeason }: Custo
         phone_number: '',
         image: null as File | null,
     });
+
+    // Get unique areas for the dropdown
+    const uniqueAreas = useMemo(() => {
+        const areas = customers.map(customer => customer.area).filter(Boolean);
+        return [...new Set(areas)].sort();
+    }, [customers]);
+
+    // Filter customers based on search query and selected area
+    const filteredCustomers = useMemo(() => {
+        return customers.filter(customer => {
+            const matchesSearch = searchQuery === '' ||
+                customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                customer.phone_number.includes(searchQuery) ||
+                customer.area.toLowerCase().includes(searchQuery.toLowerCase());
+
+            const matchesArea = selectedArea === '' || customer.area === selectedArea;
+
+            return matchesSearch && matchesArea;
+        });
+    }, [customers, searchQuery, selectedArea]);
+
+    // Clear all filters
+    const clearFilters = () => {
+        setSearchQuery('');
+        setSelectedArea('');
+    };
 
     function closeModal() {
         setIsModalOpen(false);
@@ -168,7 +336,7 @@ export default function Index({ auth, customers, seasons, currentSeason }: Custo
         }
     }
 
-    const filteredCustomers = customers.filter(customer =>
+    const activeCustomers = customers.filter(customer =>
         customer.transaction_count > 0 || customer.payment_count > 0
     );
 
@@ -214,6 +382,64 @@ export default function Index({ auth, customers, seasons, currentSeason }: Custo
                         </div>
                     </div>
 
+                    {/* Search and Filter Bar */}
+                    <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
+                        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                            {/* Search Input */}
+                            <div className="flex-1 relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <Search className="h-5 w-5 text-gray-400" />
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="Search customers by name, phone, or area..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400"
+                                />
+                            </div>
+
+                            {/* Area Filter */}
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <MapPin className="h-4 w-4 text-gray-400" />
+                                </div>
+                                <select
+                                    value={selectedArea}
+                                    onChange={(e) => setSelectedArea(e.target.value)}
+                                    className="pl-9 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white min-w-[150px]"
+                                >
+                                    <option value="">All Areas</option>
+                                    {uniqueAreas.map((area) => (
+                                        <option key={area} value={area}>
+                                            {area}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Clear Filters Button */}
+                            {(searchQuery || selectedArea) && (
+                                <button
+                                    onClick={clearFilters}
+                                    className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                                >
+                                    <X className="w-4 h-4 mr-1" />
+                                    Clear
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Filter Results Summary */}
+                        {(searchQuery || selectedArea) && (
+                            <div className="mt-3 text-sm text-gray-600">
+                                Showing {filteredCustomers.length} of {customers.length} customers
+                                {searchQuery && <span> matching "{searchQuery}"</span>}
+                                {selectedArea && <span> in {selectedArea}</span>}
+                            </div>
+                        )}
+                    </div>
+
                     {/* Stats Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
                         <div className="bg-white rounded-lg shadow-sm p-6">
@@ -234,7 +460,7 @@ export default function Index({ auth, customers, seasons, currentSeason }: Custo
                                 </div>
                                 <div className="ml-4">
                                     <p className="text-sm font-medium text-gray-600">Active Customers</p>
-                                    <p className="text-2xl font-bold text-gray-900">{filteredCustomers.length}</p>
+                                    <p className="text-2xl font-bold text-gray-900">{activeCustomers.length}</p>
                                 </div>
                             </div>
                         </div>
@@ -293,27 +519,34 @@ export default function Index({ auth, customers, seasons, currentSeason }: Custo
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             Status
                                         </th>
-                                        {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Last Activity
-                                        </th> */}
                                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             Actions
                                         </th>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
-                                    {customers.length === 0 ? (
+                                    {filteredCustomers.length === 0 ? (
                                         <tr>
-                                            <td colSpan={9} className="px-6 py-12 text-center">
+                                            <td colSpan={8} className="px-6 py-12 text-center">
                                                 <div className="text-gray-500">
-                                                    <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                                                    <p className="text-lg font-medium mb-2">No customers found</p>
-                                                    <p className="text-sm">Get started by adding your first customer</p>
+                                                    {searchQuery || selectedArea ? (
+                                                        <>
+                                                            <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                                                            <p className="text-lg font-medium mb-2">No customers found</p>
+                                                            <p className="text-sm">Try adjusting your search or filters</p>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                                                            <p className="text-lg font-medium mb-2">No customers found</p>
+                                                            <p className="text-sm">Get started by adding your first customer</p>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
                                     ) : (
-                                        customers.map((customer) => (
+                                        filteredCustomers.map((customer) => (
                                             <tr key={customer.id} className="hover:bg-gray-50">
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="flex items-center">
@@ -359,13 +592,12 @@ export default function Index({ auth, customers, seasons, currentSeason }: Custo
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                                    <span className={`font-medium ${
-                                                        customer.remaining_balance > 0
+                                                    <span className={`font-medium ${customer.remaining_balance > 0
                                                             ? 'text-red-600'
                                                             : customer.remaining_balance < 0
-                                                            ? 'text-green-600'
-                                                            : 'text-gray-900'
-                                                    }`}>
+                                                                ? 'text-green-600'
+                                                                : 'text-gray-900'
+                                                        }`}>
                                                         {formatCurrency(Math.abs(customer.remaining_balance))}
                                                     </span>
                                                     {customer.advance_payment > 0 && (
@@ -377,20 +609,6 @@ export default function Index({ auth, customers, seasons, currentSeason }: Custo
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     {getStatusBadge(customer.payment_status)}
                                                 </td>
-                                                {/* <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                    {customer.last_transaction_date && (
-                                                        <div className="flex items-center text-xs">
-                                                            <Calendar className="w-3 h-3 mr-1" />
-                                                            {new Date(customer.last_transaction_date).toLocaleDateString()}
-                                                        </div>
-                                                    )}
-                                                    {customer.last_payment_date && (
-                                                        <div className="flex items-center text-xs mt-1">
-                                                            <Banknote className="w-3 h-3 mr-1" />
-                                                            {new Date(customer.last_payment_date).toLocaleDateString()}
-                                                        </div>
-                                                    )}
-                                                </td> */}
                                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                     <div className="flex items-center justify-end gap-2">
                                                         <Link
@@ -450,19 +668,18 @@ export default function Index({ auth, customers, seasons, currentSeason }: Custo
                                     {errors.name && <div className="text-red-500 text-sm mt-1">{errors.name}</div>}
                                 </div>
 
+                                {/* Updated Area Field with SearchableAreaDropdown */}
                                 <div>
                                     <label htmlFor="area" className="block text-sm font-medium text-gray-700 mb-1">
                                         Area
                                     </label>
-                                    <input
-                                        type="text"
-                                        id="area"
-                                        className="block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    <SearchableAreaDropdown
                                         value={data.area}
-                                        onChange={(e) => setData('area', e.target.value)}
-                                        required
+                                        onChange={(value) => setData('area', value)}
+                                        areas={existingAreas || []}
+                                        error={errors.area}
+                                        placeholder="Select or type area..."
                                     />
-                                    {errors.area && <div className="text-red-500 text-sm mt-1">{errors.area}</div>}
                                 </div>
 
                                 <div>
