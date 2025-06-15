@@ -17,11 +17,9 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 // Public Routes (No Authentication Required)
-Route::get('/', function () {
-    return redirect()->route('login');
-})->name('home');
 
-Route::get('/customers-info', [PublicCustomerController::class, 'index'])->name('public.customers');
+
+Route::get('/', [PublicCustomerController::class, 'index'])->name('home');
 Route::get('/api/customers-public', [PublicCustomerController::class, 'api'])->name('public.customers.api');
 
 
